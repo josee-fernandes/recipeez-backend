@@ -13,6 +13,8 @@ interface IVerifyTokenFnParams {
 	token: string
 }
 
-type TVerifyTokenFn = (params: IVerifyTokenFnParams) => JwtPayload | string
+type TVerifyTokenFnResponse = Partial<{ email: string } & JwtPayload>
 
-export const verifyToken: TVerifyTokenFn = ({ token }) => jwt.verify(token, env.JWT_SECRET)
+type TVerifyTokenFn = (params: IVerifyTokenFnParams) => TVerifyTokenFnResponse
+
+export const verifyToken: TVerifyTokenFn = ({ token }) => jwt.verify(token, env.JWT_SECRET) as TVerifyTokenFnResponse

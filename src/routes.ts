@@ -2,7 +2,7 @@ import { PrismaClientKnownRequestError, PrismaClientValidationError } from '@pri
 import { hash, verify } from 'argon2'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
-import { generateToken } from '@/lib/jsonwebtoken'
+import { generateToken, verifyToken } from '@/lib/jsonwebtoken'
 import { type Prisma, prisma } from '@/lib/prisma'
 
 const handlePrismaError = ({
@@ -41,19 +41,11 @@ const handlePrismaError = ({
 }
 
 export const routes = async (fastify: FastifyInstance) => {
-	fastify.get('/', async () => {
-		return { hello: 'world' }
-	})
-
 	fastify.get('/health', async () => {
 		return { status: 'ok' }
 	})
 
-	fastify.get('/users/:user', async (request: FastifyRequest<{ Params: { user: string } }>, reply: FastifyReply) => {
-		const result = await prisma.user.findUnique({ where: { id: request.params.user } })
-
-		reply.status(200).send(result)
-	})
+	// Auth
 
 	fastify.post(
 		'/auth/sign-up',
@@ -101,4 +93,62 @@ export const routes = async (fastify: FastifyInstance) => {
 			}
 		},
 	)
+
+	fastify.get('/users/:user', async (request: FastifyRequest<{ Params: { user: string } }>, reply: FastifyReply) => {
+		const result = await prisma.user.findUnique({ where: { id: request.params.user } })
+
+		reply.status(200).send(result)
+	})
+
+	fastify.get('/recipes', async (_: FastifyRequest, reply: FastifyReply) => {
+		try {
+			const result = await prisma.recipe.findMany({
+				include: { user: { select: { id: true, email: true, name: true, createdAt: true, updatedAt: true } } },
+			})
+
+			reply.status(200).send(result)
+		} catch (error) {
+			handlePrismaError({ fastify, reply, error })
+		}
+	})
+
+	fastify.post('/recipes', async (request: FastifyRequest<{ Body: Prisma.RecipeCreateInput }>, reply: FastifyReply) => {
+		try {
+			const token = request.headers.authorization?.split(' ')[1]
+
+			if (!token) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const valid = verifyToken({ token })
+
+			if (!valid?.email) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const user = await prisma.user.findUnique({ where: { email: valid.email } })
+
+			if (!user) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const data: Prisma.RecipeCreateInput = {
+				...request.body,
+				user: {
+					connect: {
+						id: user.id,
+					},
+				},
+			}
+
+			const result = await prisma.recipe.create({ data })
+
+			reply.status(201).send(result)
+		} catch (error) {
+			handlePrismaError({ fastify, reply, error })
+		}
+	})
 }
