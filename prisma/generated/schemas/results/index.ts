@@ -1,0 +1,13 @@
+export { UserFindUniqueResultSchema } from './UserFindUniqueResult.schema';
+export { UserFindFirstResultSchema } from './UserFindFirstResult.schema';
+export { UserFindManyResultSchema } from './UserFindManyResult.schema';
+export { UserCreateResultSchema } from './UserCreateResult.schema';
+export { UserCreateManyResultSchema } from './UserCreateManyResult.schema';
+export { UserUpdateResultSchema } from './UserUpdateResult.schema';
+export { UserUpdateManyResultSchema } from './UserUpdateManyResult.schema';
+export { UserUpsertResultSchema } from './UserUpsertResult.schema';
+export { UserDeleteResultSchema } from './UserDeleteResult.schema';
+export { UserDeleteManyResultSchema } from './UserDeleteManyResult.schema';
+export { UserAggregateResultSchema } from './UserAggregateResult.schema';
+export { UserGroupByResultSchema } from './UserGroupByResult.schema';
+export { UserCountResultSchema } from './UserCountResult.schema';
