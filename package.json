@@ -12,7 +12,9 @@
   "packageManager": "pnpm@10.15.1",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.939.0",
     "@fastify/mongodb": "^9.0.2",
+    "@fastify/multipart": "^9.3.0",
     "@prisma/client": "6.19",
     "argon2": "^0.44.0",
     "dotenv": "^17.2.3",

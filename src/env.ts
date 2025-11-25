@@ -9,6 +9,11 @@ const envSchema = z
 		HOST: z.string().default('0.0.0.0'),
 		DATABASE_URL: z.url(),
 		JWT_SECRET: z.string(),
+		R2_ACCOUNT_ID: z.string(),
+		R2_ACCESS_KEY_ID: z.string(),
+		R2_SECRET_ACCESS_KEY: z.string(),
+		R2_BUCKET: z.string(),
+		R2_PUBLIC_URL: z.string(),
 	})
 	.safeParse(process.env)
 

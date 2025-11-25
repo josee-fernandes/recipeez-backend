@@ -1,4 +1,6 @@
+import fastifyMultipart from '@fastify/multipart'
 import Fastify from 'fastify'
+import fastifyPlugin from 'fastify-plugin'
 
 import { env } from '@/env'
 import { routes } from '@/routes'
@@ -6,6 +8,7 @@ import { routes } from '@/routes'
 const fastify = Fastify({ logger: true })
 
 const init = async () => {
+	await fastify.register(fastifyPlugin(fastifyMultipart))
 	await fastify.register(routes)
 
 	try {
