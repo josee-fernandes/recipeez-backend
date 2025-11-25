@@ -215,7 +215,11 @@ export const routes = async (fastify: FastifyInstance) => {
 
 				if (file) {
 					const buffer = await file.toBuffer()
-					url = await uploadToR2({ key: file.filename, body: buffer, contentType: file.mimetype })
+					url = await uploadToR2({
+						key: `${Date.now()}-${file.filename}`,
+						body: buffer,
+						contentType: file.mimetype,
+					})
 				}
 
 				const result = await prisma.recipe.update({

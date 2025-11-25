@@ -1,3 +1,4 @@
+import fastifyCors from '@fastify/cors'
 import fastifyMultipart from '@fastify/multipart'
 import Fastify from 'fastify'
 import fastifyPlugin from 'fastify-plugin'
@@ -8,6 +9,7 @@ import { routes } from '@/routes'
 const fastify = Fastify({ logger: true })
 
 const init = async () => {
+	await fastify.register(fastifyPlugin(fastifyCors))
 	await fastify.register(fastifyPlugin(fastifyMultipart))
 	await fastify.register(routes)
 
