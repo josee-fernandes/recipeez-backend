@@ -9,7 +9,24 @@ import { routes } from '@/routes'
 const fastify = Fastify({ logger: true })
 
 const init = async () => {
-	await fastify.register(fastifyPlugin(fastifyCors))
+	await fastify.register(
+		fastifyPlugin(async (fastify) => {
+			fastify.register(fastifyCors, {
+				origin: (origin, cb) => {
+					const allowedOrigins = [env.FRONTEND_URL, 'http://localhost:5173']
+
+					if (!origin || allowedOrigins.includes(origin)) {
+						cb(null, true)
+						return
+					}
+					cb(new Error('Not allowed by CORS'), false)
+				},
+				methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+				allowedHeaders: ['Content-Type', 'Authorization'],
+				credentials: true,
+			})
+		}),
+	)
 	await fastify.register(fastifyPlugin(fastifyMultipart))
 	await fastify.register(routes)
 

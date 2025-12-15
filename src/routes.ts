@@ -287,6 +287,57 @@ export const routes = async (fastify: FastifyInstance) => {
 		},
 	)
 
+	fastify.delete('/recipes/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+		try {
+			const token = request.headers.authorization?.split(' ')[1]
+
+			if (!token) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const valid = verifyToken({ token })
+
+			if (!valid?.email) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const user = await prisma.user.findUnique({ where: { email: valid.email } })
+
+			if (!user) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id, user: { id: user.id } } })
+
+			if (!recipe) {
+				reply.status(404).send({ error: 'Recipe not found' })
+				return
+			}
+
+			if (recipe.photo) {
+				const key = recipe.photo.split('/').pop()
+
+				if (key) {
+					await deleteFromR2({ key })
+				}
+			}
+
+			await prisma.recipe.delete({ where: { id: request.params.id, user: { id: user.id } } })
+
+			reply.status(204)
+		} catch (error) {
+			if (error instanceof jwt.JsonWebTokenError) {
+				reply.status(401).send({ error: error.message })
+				return
+			}
+
+			handlePrismaError({ fastify, reply, error })
+		}
+	})
+
 	fastify.delete(
 		'/recipes/:id/photo',
 		async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
