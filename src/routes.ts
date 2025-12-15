@@ -88,7 +88,16 @@ export const routes = async (fastify: FastifyInstance) => {
 
 				const token = generateToken({ email })
 
-				reply.status(201).send({ token })
+				const result = {
+					id: user.id,
+					email: user.email,
+					name: user.name,
+					token,
+					createdAt: user.createdAt,
+					updatedAt: user.updatedAt,
+				}
+
+				reply.status(201).send(result)
 			} catch (error) {
 				handlePrismaError({ fastify, reply, error })
 			}
@@ -125,6 +134,45 @@ export const routes = async (fastify: FastifyInstance) => {
 			}
 
 			const result = await prisma.recipe.findMany({
+				include: { user: { select: { id: true, email: true, name: true, createdAt: true, updatedAt: true } } },
+			})
+
+			reply.status(200).send(result)
+		} catch (error) {
+			if (error instanceof jwt.JsonWebTokenError) {
+				reply.status(401).send({ error: error.message })
+				return
+			}
+
+			handlePrismaError({ fastify, reply, error })
+		}
+	})
+
+	fastify.get('/recipes/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+		try {
+			const token = request.headers.authorization?.split(' ')[1]
+
+			if (!token) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const valid = verifyToken({ token })
+
+			if (!valid?.email) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const user = await prisma.user.findUnique({ where: { email: valid.email } })
+
+			if (!user) {
+				reply.status(401).send({ error: 'Unauthorized' })
+				return
+			}
+
+			const result = await prisma.recipe.findUnique({
+				where: { id: request.params.id },
 				include: { user: { select: { id: true, email: true, name: true, createdAt: true, updatedAt: true } } },
 			})
 
