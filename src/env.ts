@@ -14,6 +14,7 @@ const envSchema = z
 		R2_SECRET_ACCESS_KEY: z.string(),
 		R2_BUCKET: z.string(),
 		R2_PUBLIC_URL: z.string(),
+		FRONTEND_URL: z.string().default('http://localhost:5173'),
 	})
 	.safeParse(process.env)
 
