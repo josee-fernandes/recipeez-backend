@@ -310,7 +310,7 @@ export const routes = async (fastify: FastifyInstance) => {
 				return
 			}
 
-			const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id, user: { id: user.id } } })
+			const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
 
 			if (!recipe) {
 				reply.status(404).send({ error: 'Recipe not found' })
@@ -325,7 +325,7 @@ export const routes = async (fastify: FastifyInstance) => {
 				}
 			}
 
-			await prisma.recipe.delete({ where: { id: request.params.id, user: { id: user.id } } })
+			await prisma.recipe.delete({ where: { id: request.params.id } })
 
 			reply.status(204)
 		} catch (error) {
