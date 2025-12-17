@@ -271,11 +271,122 @@ export const routes = async (fastify: FastifyInstance) => {
 				}
 
 				const result = await prisma.recipe.update({
-					where: { id: request.params.id, user: { id: user.id } },
+					where: { id: request.params.id },
 					data: { photo: url },
 				})
 
 				reply.status(201).send(result)
+			} catch (error) {
+				if (error instanceof jwt.JsonWebTokenError) {
+					reply.status(401).send({ error: error.message })
+					return
+				}
+
+				handlePrismaError({ fastify, reply, error })
+			}
+		},
+	)
+
+	fastify.put(
+		'/recipes/:id',
+		async (
+			request: FastifyRequest<{ Params: { id: string }; Body: Prisma.RecipeUpdateInput }>,
+			reply: FastifyReply,
+		) => {
+			try {
+				const token = request.headers.authorization?.split(' ')[1]
+
+				if (!token) {
+					reply.status(401).send({ error: 'Unauthorized' })
+					return
+				}
+
+				const valid = verifyToken({ token })
+
+				if (!valid?.email) {
+					reply.status(401).send({ error: 'Unauthorized' })
+					return
+				}
+
+				const user = await prisma.user.findUnique({ where: { email: valid.email } })
+
+				if (!user) {
+					reply.status(401).send({ error: 'Unauthorized' })
+					return
+				}
+
+				const data: Prisma.RecipeUpdateInput = {
+					...request.body,
+				}
+
+				const result = await prisma.recipe.update({ where: { id: request.params.id }, data })
+
+				reply.status(201).send(result)
+			} catch (error) {
+				if (error instanceof jwt.JsonWebTokenError) {
+					reply.status(401).send({ error: error.message })
+					return
+				}
+
+				handlePrismaError({ fastify, reply, error })
+			}
+		},
+	)
+
+	fastify.put(
+		'/recipes/:id/photo',
+		async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+			try {
+				const token = request.headers.authorization?.split(' ')[1]
+
+				if (!token) {
+					reply.status(401).send({ error: 'Unauthorized' })
+					return
+				}
+
+				const valid = verifyToken({ token })
+
+				if (!valid?.email) {
+					reply.status(401).send({ error: 'Unauthorized' })
+					return
+				}
+
+				const user = await prisma.user.findUnique({ where: { email: valid.email } })
+
+				if (!user) {
+					reply.status(401).send({ error: 'Unauthorized' })
+					return
+				}
+
+				const file = await request.file({ limits: { fileSize: 1024 * 1024 * 5 } }) // 5MB
+
+				let url: string | null = null
+
+				if (file) {
+					const buffer = await file.toBuffer()
+					url = await uploadToR2({
+						key: `${Date.now()}-${file.filename}`,
+						body: buffer,
+						contentType: file.mimetype,
+					})
+
+					const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
+
+					if (recipe?.photo) {
+						const key = recipe.photo.split('/').pop()
+
+						if (key) {
+							await deleteFromR2({ key })
+						}
+					}
+				}
+
+				const result = await prisma.recipe.update({
+					where: { id: request.params.id },
+					data: { photo: url },
+				})
+
+				reply.status(200).send(result)
 			} catch (error) {
 				if (error instanceof jwt.JsonWebTokenError) {
 					reply.status(401).send({ error: error.message })
@@ -363,7 +474,7 @@ export const routes = async (fastify: FastifyInstance) => {
 					return
 				}
 
-				const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id, user: { id: user.id } } })
+				const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
 
 				if (!recipe) {
 					reply.status(404).send({ error: 'Recipe not found' })
