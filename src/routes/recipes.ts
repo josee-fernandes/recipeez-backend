@@ -4,6 +4,7 @@ import { type Prisma, prisma } from '@/lib/prisma'
 import { deleteFromR2, uploadToR2 } from '@/lib/r2'
 import { assertAuthenticated } from '@/utils/assert-authenticated'
 import { handlePrismaError } from '@/utils/prisma'
+import { normalizeTitle } from '@/utils/text'
 
 const recipesQuerySchema = z.object({
 	pageIndex: z.coerce.number().default(0),
@@ -22,21 +23,29 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 			const perPage = 10
 
+			const whereClause: Prisma.RecipeWhereInput = {}
+
+			if (recipeId) {
+				whereClause.id = recipeId
+			}
+
+			if (recipeName) {
+				const normalizedSearch = normalizeTitle(recipeName)
+
+				whereClause.titleNormalized = {
+					contains: normalizedSearch,
+				}
+			}
+
 			const [recipes, totalCount] = await prisma.$transaction([
 				prisma.recipe.findMany({
 					include: { user: { select: { id: true, email: true, name: true, createdAt: true, updatedAt: true } } },
-					where: {
-						...(recipeId && { id: recipeId }),
-						...(recipeName && { title: { contains: recipeName } }),
-					},
+					where: whereClause,
 					skip: pageIndex * perPage,
 					take: perPage,
 				}),
 				prisma.recipe.count({
-					where: {
-						...(recipeId && { id: recipeId }),
-						...(recipeName && { title: { contains: recipeName } }),
-					},
+					where: whereClause,
 				}),
 			])
 
@@ -81,6 +90,7 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 			const data: Prisma.RecipeCreateInput = {
 				...request.body,
+				titleNormalized: request.body.title ? normalizeTitle(request.body.title) : '',
 				user: {
 					connect: {
 						id: request.user.id,
@@ -152,6 +162,12 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 				const data: Prisma.RecipeUpdateInput = {
 					...request.body,
+				}
+
+				if (request.body.title && typeof request.body.title === 'string') {
+					data.titleNormalized = normalizeTitle(request.body.title)
+				} else if (request.body.title && typeof request.body.title === 'object' && 'set' in request.body.title) {
+					data.titleNormalized = normalizeTitle(request.body.title.set)
 				}
 
 				const result = await prisma.recipe.update({ where: { id: request.params.id }, data })
