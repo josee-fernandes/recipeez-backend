@@ -1,9 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import jwt from 'jsonwebtoken'
 import z from 'zod'
-import { verifyToken } from '@/lib/jsonwebtoken'
 import { type Prisma, prisma } from '@/lib/prisma'
 import { deleteFromR2, uploadToR2 } from '@/lib/r2'
+import { assertAuthenticated } from '@/utils/assert-authenticated'
 import { handlePrismaError } from '@/utils/prisma'
 
 const recipesQuerySchema = z.object({
@@ -17,30 +16,11 @@ type TRecipesQuery = z.infer<typeof recipesQuerySchema>
 export const recipesRoutes = async (fastify: FastifyInstance) => {
 	fastify.get('/recipes', async (request: FastifyRequest<{ Querystring: TRecipesQuery }>, reply: FastifyReply) => {
 		try {
-			const token = request.headers.authorization?.split(' ')[1]
-
-			if (!token) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
-
-			const valid = verifyToken({ token })
-
-			if (!valid?.email) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
-
-			const user = await prisma.user.findUnique({ where: { email: valid.email } })
-
-			if (!user) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
+			assertAuthenticated(request)
 
 			const { pageIndex, recipeId, recipeName } = recipesQuerySchema.parse(request.query)
 
-			const perPage = 10 // see if it should be possible to be dynamic
+			const perPage = 10
 
 			const [recipes, totalCount] = await prisma.$transaction([
 				prisma.recipe.findMany({
@@ -71,82 +51,39 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 			reply.status(200).send(result)
 		} catch (error) {
-			if (error instanceof jwt.JsonWebTokenError) {
-				reply.status(401).send({ error: error.message })
-				return
-			}
-
 			handlePrismaError({ fastify, reply, error })
 		}
 	})
 
 	fastify.get('/recipes/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
 		try {
-			const token = request.headers.authorization?.split(' ')[1]
-
-			if (!token) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
-
-			const valid = verifyToken({ token })
-
-			if (!valid?.email) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
-
-			const user = await prisma.user.findUnique({ where: { email: valid.email } })
-
-			if (!user) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
+			assertAuthenticated(request)
 
 			const result = await prisma.recipe.findUnique({
 				where: { id: request.params.id },
 				include: { user: { select: { id: true, email: true, name: true, createdAt: true, updatedAt: true } } },
 			})
 
-			reply.status(200).send(result)
-		} catch (error) {
-			if (error instanceof jwt.JsonWebTokenError) {
-				reply.status(401).send({ error: error.message })
+			if (!result) {
+				reply.status(404).send({ error: 'Recipe not found' })
 				return
 			}
 
+			reply.status(200).send(result)
+		} catch (error) {
 			handlePrismaError({ fastify, reply, error })
 		}
 	})
 
 	fastify.post('/recipes', async (request: FastifyRequest<{ Body: Prisma.RecipeCreateInput }>, reply: FastifyReply) => {
 		try {
-			const token = request.headers.authorization?.split(' ')[1]
-
-			if (!token) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
-
-			const valid = verifyToken({ token })
-
-			if (!valid?.email) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
-
-			const user = await prisma.user.findUnique({ where: { email: valid.email } })
-
-			if (!user) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
+			assertAuthenticated(request)
 
 			const data: Prisma.RecipeCreateInput = {
 				...request.body,
 				user: {
 					connect: {
-						id: user.id,
+						id: request.user.id,
 					},
 				},
 			}
@@ -155,11 +92,6 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 			reply.status(201).send(result)
 		} catch (error) {
-			if (error instanceof jwt.JsonWebTokenError) {
-				reply.status(401).send({ error: error.message })
-				return
-			}
-
 			handlePrismaError({ fastify, reply, error })
 		}
 	})
@@ -168,28 +100,16 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 		'/recipes/:id/photo',
 		async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
 			try {
-				const token = request.headers.authorization?.split(' ')[1]
+				assertAuthenticated(request)
 
-				if (!token) {
-					reply.status(401).send({ error: 'Unauthorized' })
+				const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
+
+				if (!recipe) {
+					reply.status(404).send({ error: 'Recipe not found' })
 					return
 				}
 
-				const valid = verifyToken({ token })
-
-				if (!valid?.email) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
-
-				const user = await prisma.user.findUnique({ where: { email: valid.email } })
-
-				if (!user) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
-
-				const file = await request.file({ limits: { fileSize: 1024 * 1024 * 5 } }) // 5MB
+				const file = await request.file({ limits: { fileSize: 1024 * 1024 * 5 } })
 
 				let url: string | null = null
 
@@ -209,11 +129,6 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 				reply.status(201).send(result)
 			} catch (error) {
-				if (error instanceof jwt.JsonWebTokenError) {
-					reply.status(401).send({ error: error.message })
-					return
-				}
-
 				handlePrismaError({ fastify, reply, error })
 			}
 		},
@@ -226,24 +141,12 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 			reply: FastifyReply,
 		) => {
 			try {
-				const token = request.headers.authorization?.split(' ')[1]
+				assertAuthenticated(request)
 
-				if (!token) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
+				const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
 
-				const valid = verifyToken({ token })
-
-				if (!valid?.email) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
-
-				const user = await prisma.user.findUnique({ where: { email: valid.email } })
-
-				if (!user) {
-					reply.status(401).send({ error: 'Unauthorized' })
+				if (!recipe) {
+					reply.status(404).send({ error: 'Recipe not found' })
 					return
 				}
 
@@ -253,13 +156,8 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 				const result = await prisma.recipe.update({ where: { id: request.params.id }, data })
 
-				reply.status(201).send(result)
+				reply.status(200).send(result)
 			} catch (error) {
-				if (error instanceof jwt.JsonWebTokenError) {
-					reply.status(401).send({ error: error.message })
-					return
-				}
-
 				handlePrismaError({ fastify, reply, error })
 			}
 		},
@@ -269,28 +167,16 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 		'/recipes/:id/photo',
 		async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
 			try {
-				const token = request.headers.authorization?.split(' ')[1]
+				assertAuthenticated(request)
 
-				if (!token) {
-					reply.status(401).send({ error: 'Unauthorized' })
+				const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
+
+				if (!recipe) {
+					reply.status(404).send({ error: 'Recipe not found' })
 					return
 				}
 
-				const valid = verifyToken({ token })
-
-				if (!valid?.email) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
-
-				const user = await prisma.user.findUnique({ where: { email: valid.email } })
-
-				if (!user) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
-
-				const file = await request.file({ limits: { fileSize: 1024 * 1024 * 5 } }) // 5MB
+				const file = await request.file({ limits: { fileSize: 1024 * 1024 * 5 } })
 
 				let url: string | null = null
 
@@ -302,9 +188,8 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 						contentType: file.mimetype,
 					})
 
-					const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
-
-					if (recipe?.photo) {
+					// Deletar foto antiga se existir
+					if (recipe.photo) {
 						const key = recipe.photo.split('/').pop()
 
 						if (key) {
@@ -320,11 +205,6 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 				reply.status(200).send(result)
 			} catch (error) {
-				if (error instanceof jwt.JsonWebTokenError) {
-					reply.status(401).send({ error: error.message })
-					return
-				}
-
 				handlePrismaError({ fastify, reply, error })
 			}
 		},
@@ -332,26 +212,7 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 	fastify.delete('/recipes/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
 		try {
-			const token = request.headers.authorization?.split(' ')[1]
-
-			if (!token) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
-
-			const valid = verifyToken({ token })
-
-			if (!valid?.email) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
-
-			const user = await prisma.user.findUnique({ where: { email: valid.email } })
-
-			if (!user) {
-				reply.status(401).send({ error: 'Unauthorized' })
-				return
-			}
+			assertAuthenticated(request)
 
 			const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
 
@@ -360,6 +221,7 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 				return
 			}
 
+			// Deletar foto se existir
 			if (recipe.photo) {
 				const key = recipe.photo.split('/').pop()
 
@@ -370,13 +232,8 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 			await prisma.recipe.delete({ where: { id: request.params.id } })
 
-			reply.status(204)
+			reply.status(204).send()
 		} catch (error) {
-			if (error instanceof jwt.JsonWebTokenError) {
-				reply.status(401).send({ error: error.message })
-				return
-			}
-
 			handlePrismaError({ fastify, reply, error })
 		}
 	})
@@ -385,26 +242,7 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 		'/recipes/:id/photo',
 		async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
 			try {
-				const token = request.headers.authorization?.split(' ')[1]
-
-				if (!token) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
-
-				const valid = verifyToken({ token })
-
-				if (!valid?.email) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
-
-				const user = await prisma.user.findUnique({ where: { email: valid.email } })
-
-				if (!user) {
-					reply.status(401).send({ error: 'Unauthorized' })
-					return
-				}
+				assertAuthenticated(request)
 
 				const recipe = await prisma.recipe.findUnique({ where: { id: request.params.id } })
 
@@ -413,6 +251,7 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 					return
 				}
 
+				// Deletar foto do R2 se existir
 				if (recipe.photo) {
 					const key = recipe.photo.split('/').pop()
 
@@ -421,13 +260,14 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 					}
 				}
 
-				reply.status(204)
-			} catch (error) {
-				if (error instanceof jwt.JsonWebTokenError) {
-					reply.status(401).send({ error: error.message })
-					return
-				}
+				// Atualizar campo photo para null no banco
+				await prisma.recipe.update({
+					where: { id: request.params.id },
+					data: { photo: null },
+				})
 
+				reply.status(204).send()
+			} catch (error) {
 				handlePrismaError({ fastify, reply, error })
 			}
 		},
