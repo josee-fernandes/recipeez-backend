@@ -4,7 +4,7 @@ import { type Prisma, prisma } from '@/lib/prisma'
 import { deleteFromR2, uploadToR2 } from '@/lib/r2'
 import { assertAuthenticated } from '@/utils/assert-authenticated'
 import { handlePrismaError } from '@/utils/prisma'
-import { normalizeTitle } from '@/utils/text'
+import { generateSlug, normalizeTitle } from '@/utils/text'
 
 const recipesQuerySchema = z.object({
 	pageIndex: z.coerce.number().default(0),
@@ -91,6 +91,7 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 			const data: Prisma.RecipeCreateInput = {
 				...request.body,
 				titleNormalized: request.body.title ? normalizeTitle(request.body.title) : '',
+				slug: request.body.title ? generateSlug(request.body.title) : '',
 				user: {
 					connect: {
 						id: request.user.id,
@@ -166,8 +167,10 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 
 				if (request.body.title && typeof request.body.title === 'string') {
 					data.titleNormalized = normalizeTitle(request.body.title)
+					data.slug = generateSlug(request.body.title)
 				} else if (request.body.title && typeof request.body.title === 'object' && 'set' in request.body.title) {
 					data.titleNormalized = normalizeTitle(request.body.title.set)
+					data.slug = generateSlug(request.body.title.set)
 				}
 
 				const result = await prisma.recipe.update({ where: { id: request.params.id }, data })
