@@ -1,12 +1,21 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import jwt from 'jsonwebtoken'
+import z from 'zod'
 import { verifyToken } from '@/lib/jsonwebtoken'
 import { type Prisma, prisma } from '@/lib/prisma'
 import { deleteFromR2, uploadToR2 } from '@/lib/r2'
 import { handlePrismaError } from '@/utils/prisma'
 
+const recipesQuerySchema = z.object({
+	pageIndex: z.coerce.number().default(0),
+	recipeId: z.string().optional(),
+	recipeName: z.string().optional(),
+})
+
+type TRecipesQuery = z.infer<typeof recipesQuerySchema>
+
 export const recipesRoutes = async (fastify: FastifyInstance) => {
-	fastify.get('/recipes', async (request: FastifyRequest, reply: FastifyReply) => {
+	fastify.get('/recipes', async (request: FastifyRequest<{ Querystring: TRecipesQuery }>, reply: FastifyReply) => {
 		try {
 			const token = request.headers.authorization?.split(' ')[1]
 
@@ -29,9 +38,36 @@ export const recipesRoutes = async (fastify: FastifyInstance) => {
 				return
 			}
 
-			const result = await prisma.recipe.findMany({
-				include: { user: { select: { id: true, email: true, name: true, createdAt: true, updatedAt: true } } },
-			})
+			const { pageIndex, recipeId, recipeName } = recipesQuerySchema.parse(request.query)
+
+			const perPage = 10 // see if it should be possible to be dynamic
+
+			const [recipes, totalCount] = await prisma.$transaction([
+				prisma.recipe.findMany({
+					include: { user: { select: { id: true, email: true, name: true, createdAt: true, updatedAt: true } } },
+					where: {
+						...(recipeId && { id: recipeId }),
+						...(recipeName && { title: { contains: recipeName } }),
+					},
+					skip: pageIndex * perPage,
+					take: perPage,
+				}),
+				prisma.recipe.count({
+					where: {
+						...(recipeId && { id: recipeId }),
+						...(recipeName && { title: { contains: recipeName } }),
+					},
+				}),
+			])
+
+			const result = {
+				recipes,
+				meta: {
+					pageIndex,
+					perPage,
+					totalCount,
+				},
+			}
 
 			reply.status(200).send(result)
 		} catch (error) {
