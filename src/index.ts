@@ -4,6 +4,7 @@ import Fastify from 'fastify'
 import fastifyPlugin from 'fastify-plugin'
 
 import { env } from '@/env'
+import { authPlugin } from '@/plugins/auth-plugin'
 import { routes } from '@/routes'
 
 const fastify = Fastify({ logger: true })
@@ -28,6 +29,7 @@ const init = async () => {
 		}),
 	)
 	await fastify.register(fastifyPlugin(fastifyMultipart))
+	await fastify.register(authPlugin)
 	await fastify.register(routes)
 
 	try {
